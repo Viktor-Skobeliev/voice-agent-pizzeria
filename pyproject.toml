@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "voice-agent-pizzeria"
+version = "0.1.0"
+description = "Voice AI agent for a pizzeria — LiveKit Agents + OpenAI Realtime API."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Viktor Skobeliev" }]
+dependencies = [
+    "livekit-agents==1.6.4",
+    "livekit-plugins-openai==1.6.4",
+    "pydantic-settings==2.14.2",
+    "python-dotenv==1.2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.15.20",
+    "mypy==2.1.0",
+]
+
+[project.scripts]
+pizza-agent = "voice_agent_pizzeria.agent:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/voice_agent_pizzeria"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+# fake_api.py is provided as-is by the assignment — leave it untouched.
+extend-exclude = ["src/voice_agent_pizzeria/fake_api.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+
+# fake_api.py is provided as-is by the assignment — don't enforce our strictness on it.
+[[tool.mypy.overrides]]
+module = "voice_agent_pizzeria.fake_api"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
