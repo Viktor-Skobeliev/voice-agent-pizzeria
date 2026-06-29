@@ -53,7 +53,11 @@ async def test_shows_menu_via_tool() -> None:
         result: RunResult[Any] = await session.run(user_input="Які піци у вас є?")
         result.expect.contains_function_call(name="show_menu")
         await result.expect.contains_message(role="assistant").judge(
-            judge, intent="Перелічує піци з меню та їхні ціни."
+            judge,
+            intent=(
+                "Перелічує доступні піци з меню, спираючись на дані інструмента "
+                "(ціни називати не обов'язково для голосу)."
+            ),
         )
 
 
