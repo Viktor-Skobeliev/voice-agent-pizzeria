@@ -22,6 +22,7 @@ from livekit.agents.voice.run_result import RunResult
 from livekit.plugins import openai
 
 from voice_agent_pizzeria.agent import PizzaAgent
+from voice_agent_pizzeria.cart import CartData
 from voice_agent_pizzeria.config import get_settings
 
 pytestmark = pytest.mark.skipif(
@@ -37,7 +38,7 @@ async def test_realtime_model_calls_tool_and_replies() -> None:
         voice=settings.openai_realtime_voice,
         api_key=settings.openai_api_key.get_secret_value(),
     )
-    async with AgentSession[None](llm=llm) as session:
+    async with AgentSession[CartData](llm=llm, userdata=CartData()) as session:
         await session.start(PizzaAgent())
         result: RunResult[Any] = await session.run(user_input="Які піци у вас є?")
         result.expect.contains_function_call(name="show_menu")

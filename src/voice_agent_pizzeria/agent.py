@@ -20,6 +20,7 @@ from livekit.agents import (
 )
 from livekit.plugins import openai
 
+from .cart import CartData
 from .config import get_settings
 from .logging_setup import logger, setup_logging
 from .prompts import GREETING_INSTRUCTION, SYSTEM_PROMPT
@@ -50,7 +51,8 @@ async def entrypoint(ctx: JobContext) -> None:
         settings.openai_realtime_voice,
     )
 
-    session: AgentSession[None] = AgentSession(
+    session: AgentSession[CartData] = AgentSession(
+        userdata=CartData(),
         llm=openai.realtime.RealtimeModel(
             model=settings.openai_realtime_model,
             voice=settings.openai_realtime_voice,

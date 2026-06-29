@@ -1,45 +1,42 @@
-"""LiveKit function-tools — thin, validated wrappers around ``fake_api``.
+"""LiveKit function-tools — validated wrappers around fake_api + cart state.
 
-The model never calls ``fake_api`` directly. Each tool validates/normalizes
-its arguments, calls the backend, maps backend errors to friendly Ukrainian
-messages, logs the call (PII masked), and never raises into the session.
+Read-only tools (show_menu, get_item_details, check_order_status) wrap fake_api
+directly. Cart tools (add_to_cart, view_cart, remove_from_cart, place_order)
+operate on per-session CartData so items the customer named earlier in the
+conversation can't be forgotten by the model.
 
-The real logic lives in plain ``*_text`` helpers so it can be unit-tested
-without spinning up an LLM; the decorated wrappers are thin adapters.
+Menu/status logic lives in plain ``*_text`` helpers here; cart logic lives in
+cart.py — both unit-tested without an LLM. The decorated wrappers are thin
+adapters that validate, log (PII masked) and never raise into the session.
 """
 
 from __future__ import annotations
 
 from typing import Annotated, Any
 
-from livekit.agents import function_tool
+from livekit.agents import RunContext, function_tool
 from livekit.agents.llm import Tool, Toolset
 from pydantic import BaseModel, Field
 
+from . import cart as cart_ops
 from . import fake_api
+from .cart import CartData
 from .logging_setup import log_tool_call, logger, mask
-from .validation import (
-    MAX_ADDRESS_LEN,
-    MAX_NAME_LEN,
-    MAX_QUANTITY,
-    clean_text,
-    normalize_phone,
-    validate_quantity,
-)
+from .validation import clean_text
 
 _GENERIC_ERROR = "Вибачте, сталася технічна помилка. Спробуймо ще раз?"
 _CATEGORY_LABELS = {"pizza": "Піца", "drinks": "Напої", "desserts": "Десерти"}
 
 
 class OrderLine(BaseModel):
-    """A single position in an order."""
+    """A single position the customer wants to add."""
 
     id: str = Field(description="ID позиції меню, напр. 'pz1'")
     quantity: int = Field(default=1, description="Кількість, ціле число від 1")
 
 
 # --------------------------------------------------------------------------- #
-# Pure logic (unit-tested directly, no LLM / no decorator)                     #
+# Read-only menu/status logic (unit-tested directly)                          #
 # --------------------------------------------------------------------------- #
 
 
@@ -81,50 +78,6 @@ def item_details_text(item_id: str) -> str:
         parts.append(f"Розмір {res['size_cm']} см.")
     parts.append("В наявності." if res.get("available") else "Зараз недоступна.")
     return " ".join(parts)
-
-
-def place_order_text(
-    items: list[dict[str, Any]],
-    customer_name: str,
-    phone: str,
-    address: str,
-) -> str:
-    if not items:
-        return "Замовлення поки порожнє. Що бажаєте додати?"
-
-    normalized: list[dict[str, Any]] = []
-    for entry in items:
-        item_id = clean_text(str(entry.get("id", "")), max_len=20)
-        if not item_id:
-            return "Уточніть, будь ласка, які саме позиції додати до замовлення."
-        qty = validate_quantity(entry.get("quantity", 1))
-        if qty is None:
-            return f"Некоректна кількість. Можна замовити від 1 до {MAX_QUANTITY} штук."
-        normalized.append({"id": item_id, "quantity": qty})
-
-    name = clean_text(customer_name, max_len=MAX_NAME_LEN)
-    if not name:
-        return "Підкажіть, будь ласка, ім'я для замовлення."
-    norm_phone = normalize_phone(phone)
-    if not norm_phone:
-        return "Вкажіть, будь ласка, коректний номер телефону у форматі +380XXXXXXXXX."
-    addr = clean_text(address, max_len=MAX_ADDRESS_LEN)
-    if not addr:
-        return "Назвіть, будь ласка, адресу доставки."
-
-    res = fake_api.create_order(normalized, name, norm_phone, addr)
-    if not res.get("success"):
-        reason = res.get("error", "Не вдалося оформити замовлення.")
-        return f"{reason} Бажаєте змінити замовлення?"
-    items_str = ", ".join(res["items"])
-    # Speak the order number as plain digits — easier to say back over voice;
-    # check_order_status normalizes a digits-only number back to ORD-NNN.
-    order_num = str(res["order_id"]).replace("ORD-", "")
-    return (
-        f"Замовлення прийнято! Номер замовлення {order_num}. "
-        f"Склад: {items_str}. Сума {res['total']} грн. "
-        f"Орієнтовний час приготування — {res['estimated_minutes']} хвилин."
-    )
 
 
 def order_status_text(order_id: str) -> str:
@@ -184,27 +137,72 @@ async def get_item_details(
 
 
 @function_tool()
-async def place_order(
-    items: Annotated[list[OrderLine], Field(description="Позиції замовлення (id + кількість)")],
-    customer_name: Annotated[str, Field(description="Ім'я клієнта")],
-    phone: Annotated[str, Field(description="Телефон, напр. +380XXXXXXXXX")],
-    address: Annotated[str, Field(description="Адреса доставки")],
+async def add_to_cart(
+    ctx: RunContext[CartData],
+    items: Annotated[list[OrderLine], Field(description="Позиції для додавання (id + кількість)")],
 ) -> str:
-    """Оформити замовлення.
-
-    Викликати ЛИШЕ після того, як клієнт підтвердив склад, суму та контактні дані.
-    """
+    """Додати позиції до замовлення. Викликай ОДРАЗУ, щойно клієнт їх назвав."""
     try:
         dict_items: list[dict[str, Any]] = [
             {"id": li.id, "quantity": li.quantity} for li in items
         ]
-        out = place_order_text(dict_items, customer_name, phone, address)
+        out = cart_ops.add_to_cart(ctx.userdata, dict_items)
+        log_tool_call("add_to_cart", ok=True, lines=len(items))
+        return out
+    except Exception:
+        logger.exception("add_to_cart failed")
+        log_tool_call("add_to_cart", ok=False)
+        return _GENERIC_ERROR
+
+
+@function_tool()
+async def view_cart(ctx: RunContext[CartData]) -> str:
+    """Показати поточний склад замовлення та суму."""
+    try:
+        out = cart_ops.view_cart(ctx.userdata)
+        log_tool_call("view_cart", ok=True, lines=len(ctx.userdata.items))
+        return out
+    except Exception:
+        logger.exception("view_cart failed")
+        log_tool_call("view_cart", ok=False)
+        return _GENERIC_ERROR
+
+
+@function_tool()
+async def remove_from_cart(
+    ctx: RunContext[CartData],
+    item_id: Annotated[str, Field(description="ID позиції, яку прибрати, напр. 'pz1'")],
+) -> str:
+    """Прибрати позицію із замовлення."""
+    try:
+        out = cart_ops.remove_from_cart(ctx.userdata, item_id)
+        log_tool_call("remove_from_cart", ok=True, item_id=item_id)
+        return out
+    except Exception:
+        logger.exception("remove_from_cart failed")
+        log_tool_call("remove_from_cart", ok=False, item_id=item_id)
+        return _GENERIC_ERROR
+
+
+@function_tool()
+async def place_order(
+    ctx: RunContext[CartData],
+    customer_name: Annotated[str, Field(description="Ім'я клієнта")],
+    phone: Annotated[str, Field(description="Телефон, напр. +380XXXXXXXXX")],
+    address: Annotated[str, Field(description="Адреса доставки")],
+) -> str:
+    """Оформити замовлення з поточного кошика.
+
+    Викликати ЛИШЕ після того, як клієнт підтвердив склад і суму (див. view_cart).
+    """
+    try:
+        out = cart_ops.place_order(ctx.userdata, customer_name, phone, address)
         log_tool_call(
             "place_order",
             ok=True,
             name=mask(customer_name),
             phone=mask(phone),
-            lines=len(items),
+            lines=len(ctx.userdata.items),
         )
         return out
     except Exception:
@@ -231,6 +229,9 @@ async def check_order_status(
 ALL_TOOLS: list[Tool | Toolset] = [
     show_menu,
     get_item_details,
+    add_to_cart,
+    view_cart,
+    remove_from_cart,
     place_order,
     check_order_status,
 ]

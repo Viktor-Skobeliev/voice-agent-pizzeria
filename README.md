@@ -35,17 +35,21 @@
                                           ├─ AgentSession + PizzaAgent(instructions)
                                           │     └─ llm = OpenAI Realtime (gpt-realtime-mini)
                                           │
+                                          ├─ CartData (стан замовлення сесії)
                                           └─ Tools (function calling):
                                                show_menu · get_item_details
+                                               add_to_cart · view_cart · remove_from_cart
                                                place_order · check_order_status
                                                      │ обгортки з валідацією
                                                      ▼
                                                fake_api.py (надано в завданні, без змін)
 ```
 
-**Ключове рішення:** `fake_api.py` не редагується і не віддається моделі напряму —
+**Ключові рішення:** `fake_api.py` не редагується і не віддається моделі напряму —
 він обгорнутий тонким шаром `tools.py`, який додає валідацію аргументів,
-нормалізацію та дружні до людини повідомлення про помилки.
+нормалізацію та дружні до людини повідомлення про помилки. Склад замовлення
+зберігається в кошику сесії (`CartData`), а не в пам'яті моделі — тож позиції,
+названі раніше, не губляться.
 
 ---
 
@@ -133,6 +137,9 @@ docker run --env-file .env voice-agent-pizzeria   # production worker (start mod
   (свіжий `main` уже використовує `AgentServer`); код написано під стабільний 1.6.4.
 - **Номер замовлення озвучується цифрами** (без префікса `ORD-`) — зручніше для
   голосу; `check_order_status` нормалізує цифри назад у `ORD-NNN`.
+- **Кошик на стороні сервера** (`CartData` в `userdata`) з інструментами
+  `add_to_cart` / `view_cart` / `remove_from_cart` — модель не мусить тримати
+  склад замовлення в пам'яті, тож нічого не «забуває» між репліками.
 
 ---
 
@@ -152,7 +159,8 @@ docker run --env-file .env voice-agent-pizzeria   # production worker (start mod
 | Файл | Призначення |
 |------|-------------|
 | `src/voice_agent_pizzeria/agent.py` | entrypoint, AgentSession, RealtimeModel, події сесії |
-| `src/voice_agent_pizzeria/tools.py` | function-tools — обгортки над `fake_api` |
+| `src/voice_agent_pizzeria/tools.py` | function-tools — меню, статус і операції з кошиком |
+| `src/voice_agent_pizzeria/cart.py` | стан замовлення сесії (`CartData`) + його логіка |
 | `src/voice_agent_pizzeria/validation.py` | нормалізація телефону/кількості/тексту |
 | `src/voice_agent_pizzeria/prompts.py` | system prompt / persona агента |
 | `src/voice_agent_pizzeria/config.py` | типізована конфігурація з `.env` |

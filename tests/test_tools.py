@@ -1,19 +1,11 @@
-"""Unit tests for tool logic — no LLM, no network, fully deterministic."""
+"""Unit tests for read-only tool logic — no LLM, no network, deterministic."""
 
 from __future__ import annotations
 
 import pytest
 
-from voice_agent_pizzeria.tools import (
-    item_details_text,
-    menu_text,
-    order_status_text,
-    place_order_text,
-)
+from voice_agent_pizzeria.tools import item_details_text, menu_text, order_status_text
 from voice_agent_pizzeria.validation import normalize_phone, validate_quantity
-
-_CONTACT = ("Іван", "+380991112233", "вул. Тестова, 1")
-
 
 # --- menu ---------------------------------------------------------------- #
 
@@ -32,13 +24,12 @@ def test_menu_filter_pizza_excludes_drinks() -> None:
 
 
 def test_menu_ukrainian_alias() -> None:
-    # fake_api maps 'піца' -> 'pizza'
     assert "Маргарита" in menu_text("піца")
 
 
 def test_menu_marks_unavailable() -> None:
     out = menu_text("pizza")
-    assert "Гавайська" in out  # available: False in fake_api
+    assert "Гавайська" in out
     assert "недоступно" in out.lower()
 
 
@@ -60,12 +51,33 @@ def test_item_details_unknown() -> None:
 
 
 def test_item_details_unavailable() -> None:
-    # pz4 (Гавайська) is available: False in fake_api
-    assert "недоступна" in item_details_text("pz4").lower()
+    assert "недоступна" in item_details_text("pz4").lower()  # Гавайська
 
 
 def test_item_details_empty_input() -> None:
     assert "уточніть" in item_details_text("   ").lower()
+
+
+# --- order status -------------------------------------------------------- #
+
+
+def test_status_known_order() -> None:
+    out = order_status_text("ORD-101")
+    assert "ORD-101" in out
+    assert "статус" in out.lower()
+
+
+def test_status_unknown_order() -> None:
+    assert "не знайдено" in order_status_text("ORD-999").lower()
+
+
+def test_status_normalizes_digits_only() -> None:
+    assert "ORD-101" in order_status_text("101")
+
+
+def test_status_empty_input() -> None:
+    assert "назвіть" in order_status_text("").lower()
+    assert "назвіть" in order_status_text("   ").lower()
 
 
 # --- phone normalization ------------------------------------------------- #
@@ -112,73 +124,3 @@ def test_phone_invalid(raw: str | None) -> None:
 )
 def test_quantity(qty: object, valid: bool) -> None:
     assert (validate_quantity(qty) is not None) is valid
-
-
-# --- place order --------------------------------------------------------- #
-
-
-def test_place_order_happy_path() -> None:
-    out = place_order_text([{"id": "pz1", "quantity": 2}], *_CONTACT)
-    assert "прийнято" in out.lower()
-    assert "номер замовлення" in out.lower()
-
-
-def test_place_order_empty_address() -> None:
-    out = place_order_text([{"id": "pz1", "quantity": 1}], "Іван", "+380991112233", "   ")
-    assert "адрес" in out.lower()
-
-
-def test_place_order_empty_item_id() -> None:
-    out = place_order_text([{"id": "", "quantity": 1}], *_CONTACT)
-    assert "уточніть" in out.lower()
-
-
-def test_place_order_unavailable_item() -> None:
-    out = place_order_text([{"id": "pz4", "quantity": 1}], *_CONTACT)  # Гавайська: unavailable
-    assert "недоступна" in out.lower()
-
-
-def test_place_order_unknown_item() -> None:
-    out = place_order_text([{"id": "zzz", "quantity": 1}], *_CONTACT)
-    assert "не знайдено" in out.lower()
-
-
-def test_place_order_empty_cart() -> None:
-    assert "порожн" in place_order_text([], *_CONTACT).lower()
-
-
-def test_place_order_bad_phone() -> None:
-    out = place_order_text([{"id": "pz1", "quantity": 1}], "Іван", "123", "адреса")
-    assert "телефон" in out.lower()
-
-
-def test_place_order_missing_name() -> None:
-    out = place_order_text([{"id": "pz1", "quantity": 1}], "  ", "+380991112233", "адреса")
-    assert "ім'я" in out.lower()
-
-
-def test_place_order_bad_quantity() -> None:
-    out = place_order_text([{"id": "pz1", "quantity": 0}], *_CONTACT)
-    assert "кількість" in out.lower()
-
-
-# --- order status -------------------------------------------------------- #
-
-
-def test_status_known_order() -> None:
-    out = order_status_text("ORD-101")
-    assert "ORD-101" in out
-    assert "статус" in out.lower()
-
-
-def test_status_unknown_order() -> None:
-    assert "не знайдено" in order_status_text("ORD-999").lower()
-
-
-def test_status_normalizes_digits_only() -> None:
-    assert "ORD-101" in order_status_text("101")
-
-
-def test_status_empty_input() -> None:
-    assert "назвіть" in order_status_text("").lower()
-    assert "назвіть" in order_status_text("   ").lower()
