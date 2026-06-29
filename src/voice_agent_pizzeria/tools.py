@@ -196,13 +196,17 @@ async def place_order(
     Викликати ЛИШЕ після того, як клієнт підтвердив склад і суму (див. view_cart).
     """
     try:
+        # Capture the cart size BEFORE placing — cart_ops.place_order clears it
+        # on success, so logging len() afterwards would always read 0.
+        lines = len(ctx.userdata.items)
         out = cart_ops.place_order(ctx.userdata, customer_name, phone, address)
+        placed = "прийнято" in out
         log_tool_call(
             "place_order",
-            ok=True,
+            ok=placed,
             name=mask(customer_name),
             phone=mask(phone),
-            lines=len(ctx.userdata.items),
+            lines=lines,
         )
         return out
     except Exception:
