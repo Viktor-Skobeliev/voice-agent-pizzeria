@@ -14,10 +14,9 @@ from livekit.agents import (
     CloseEvent,
     ErrorEvent,
     JobContext,
-    MetricsCollectedEvent,
+    SessionUsageUpdatedEvent,
     WorkerOptions,
     cli,
-    metrics,
 )
 from livekit.plugins import openai
 
@@ -55,18 +54,17 @@ async def entrypoint(ctx: JobContext) -> None:
         llm=openai.realtime.RealtimeModel(
             model=settings.openai_realtime_model,
             voice=settings.openai_realtime_voice,
-            api_key=settings.openai_api_key,
+            api_key=settings.openai_api_key.get_secret_value(),
         ),
         max_tool_steps=_MAX_TOOL_STEPS,
     )
 
     # --- Observability + session-level error handling ---
-    usage = metrics.UsageCollector()
+    last_usage: list[object] = []  # holds the latest cumulative usage snapshot
 
-    @session.on("metrics_collected")
-    def _on_metrics(ev: MetricsCollectedEvent) -> None:
-        metrics.log_metrics(ev.metrics)
-        usage.collect(ev.metrics)
+    @session.on("session_usage_updated")
+    def _on_usage(ev: SessionUsageUpdatedEvent) -> None:
+        last_usage[:] = [ev.usage]
 
     @session.on("error")
     def _on_error(ev: ErrorEvent) -> None:
@@ -76,7 +74,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     @session.on("close")
     def _on_close(ev: CloseEvent) -> None:
-        logger.info("session closed; usage: %s", usage.get_summary())
+        logger.info("session closed; usage: %s", last_usage[0] if last_usage else "n/a")
 
     await ctx.connect()
     await session.start(agent=PizzaAgent(), room=ctx.room)

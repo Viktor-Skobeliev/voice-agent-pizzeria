@@ -57,6 +57,8 @@ def _format_menu(items: list[dict[str, Any]]) -> str:
 
 
 def menu_text(category: str | None) -> str:
+    if category is not None:
+        category = clean_text(category, max_len=20) or None
     items = fake_api.get_menu(category)
     if not items:
         if category:
@@ -115,8 +117,11 @@ def place_order_text(
         reason = res.get("error", "Не вдалося оформити замовлення.")
         return f"{reason} Бажаєте змінити замовлення?"
     items_str = ", ".join(res["items"])
+    # Speak the order number as plain digits — easier to say back over voice;
+    # check_order_status normalizes a digits-only number back to ORD-NNN.
+    order_num = str(res["order_id"]).replace("ORD-", "")
     return (
-        f"Замовлення прийнято! Номер {res['order_id']}. "
+        f"Замовлення прийнято! Номер замовлення {order_num}. "
         f"Склад: {items_str}. Сума {res['total']} грн. "
         f"Орієнтовний час приготування — {res['estimated_minutes']} хвилин."
     )

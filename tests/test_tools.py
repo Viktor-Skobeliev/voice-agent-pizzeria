@@ -59,6 +59,11 @@ def test_item_details_unknown() -> None:
     assert "не знайшла" in item_details_text("zzz").lower()
 
 
+def test_item_details_unavailable() -> None:
+    # pz4 (Гавайська) is available: False in fake_api
+    assert "недоступна" in item_details_text("pz4").lower()
+
+
 def test_item_details_empty_input() -> None:
     assert "уточніть" in item_details_text("   ").lower()
 
@@ -99,6 +104,10 @@ def test_phone_invalid(raw: str | None) -> None:
         (True, False),
         ("3", True),
         ("x", False),
+        ("1.0", True),
+        ("2.5", False),
+        (2.0, True),
+        (2.5, False),
     ],
 )
 def test_quantity(qty: object, valid: bool) -> None:
@@ -111,7 +120,17 @@ def test_quantity(qty: object, valid: bool) -> None:
 def test_place_order_happy_path() -> None:
     out = place_order_text([{"id": "pz1", "quantity": 2}], *_CONTACT)
     assert "прийнято" in out.lower()
-    assert "ORD-" in out
+    assert "номер замовлення" in out.lower()
+
+
+def test_place_order_empty_address() -> None:
+    out = place_order_text([{"id": "pz1", "quantity": 1}], "Іван", "+380991112233", "   ")
+    assert "адрес" in out.lower()
+
+
+def test_place_order_empty_item_id() -> None:
+    out = place_order_text([{"id": "", "quantity": 1}], *_CONTACT)
+    assert "уточніть" in out.lower()
 
 
 def test_place_order_unavailable_item() -> None:
@@ -158,3 +177,8 @@ def test_status_unknown_order() -> None:
 
 def test_status_normalizes_digits_only() -> None:
     assert "ORD-101" in order_status_text("101")
+
+
+def test_status_empty_input() -> None:
+    assert "назвіть" in order_status_text("").lower()
+    assert "назвіть" in order_status_text("   ").lower()

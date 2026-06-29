@@ -44,13 +44,28 @@ def normalize_phone(raw: str | None) -> str | None:
 
 
 def validate_quantity(qty: object) -> int | None:
-    """Return an int quantity in ``[1, MAX_QUANTITY]`` or ``None`` if invalid."""
+    """Return an int quantity in ``[1, MAX_QUANTITY]`` or ``None`` if invalid.
+
+    Accepts ints, whole-number floats, and numeric strings (incl. ``"2"`` and
+    ``"2.0"`` — the Realtime model sometimes serializes integers with a decimal
+    point) but rejects fractional values like ``2.5``.
+    """
     if isinstance(qty, bool):  # bool is an int subclass — reject it explicitly
         return None
     if isinstance(qty, int):
         value = qty
-    elif isinstance(qty, str) and qty.strip().lstrip("-").isdigit():
+    elif isinstance(qty, float):
+        if not qty.is_integer():
+            return None
         value = int(qty)
+    elif isinstance(qty, str):
+        try:
+            parsed = float(qty.strip())
+        except ValueError:
+            return None
+        if not parsed.is_integer():
+            return None
+        value = int(parsed)
     else:
         return None
     return value if 1 <= value <= MAX_QUANTITY else None

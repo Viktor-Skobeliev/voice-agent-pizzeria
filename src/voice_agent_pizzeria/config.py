@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +23,7 @@ class Settings(BaseSettings):
     )
 
     # --- OpenAI: the realtime model is both the brain and the voice ---
-    openai_api_key: str
+    openai_api_key: SecretStr  # SecretStr so it never leaks via repr/serialization
     openai_realtime_model: str = "gpt-realtime-mini"
     openai_realtime_voice: str = "marin"
 
