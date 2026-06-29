@@ -7,7 +7,7 @@ name = "voice-agent-pizzeria"
 version = "0.1.0"
 description = "Voice AI agent for a pizzeria — LiveKit Agents + OpenAI Realtime API."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Viktor Skobeliev" }]
 dependencies = [
@@ -33,7 +33,7 @@ packages = ["src/voice_agent_pizzeria"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 # fake_api.py is provided as-is by the assignment — leave it untouched.
 extend-exclude = ["src/voice_agent_pizzeria/fake_api.py"]
@@ -42,7 +42,7 @@ extend-exclude = ["src/voice_agent_pizzeria/fake_api.py"]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 files = ["src", "tests"]
 
@@ -50,6 +50,12 @@ files = ["src", "tests"]
 [[tool.mypy.overrides]]
 module = "voice_agent_pizzeria.fake_api"
 ignore_errors = true
+
+# Tests: keep type checking but don't require annotations on every test function.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

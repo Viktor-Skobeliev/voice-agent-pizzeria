@@ -30,8 +30,8 @@ def mask(value: str | None, *, keep: int = 2) -> str:
     return "*" * (len(value) - keep) + value[-keep:]
 
 
-def log_tool_call(name: str, *, ok: bool, **fields: Any) -> None:
+def log_tool_call(tool: str, *, ok: bool, **fields: Any) -> None:
     """Emit a single structured line for a tool invocation."""
     parts = " ".join(f"{k}={v}" for k, v in fields.items())
     status = "ok" if ok else "fail"
-    logger.info("tool=%s status=%s %s", name, status, parts)
+    logger.info("tool=%s status=%s %s", tool, status, parts)
