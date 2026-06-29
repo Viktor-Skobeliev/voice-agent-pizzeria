@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from livekit.agents import function_tool
+from livekit.agents.llm import Tool, Toolset
 from pydantic import BaseModel, Field
 
 from . import fake_api
@@ -222,4 +223,9 @@ async def check_order_status(
         return _GENERIC_ERROR
 
 
-ALL_TOOLS = [show_menu, get_item_details, place_order, check_order_status]
+ALL_TOOLS: list[Tool | Toolset] = [
+    show_menu,
+    get_item_details,
+    place_order,
+    check_order_status,
+]
