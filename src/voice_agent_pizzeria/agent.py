@@ -8,13 +8,26 @@ Run modes (handled by LiveKit's CLI):
 from __future__ import annotations
 
 from dotenv import load_dotenv
-from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    CloseEvent,
+    ErrorEvent,
+    JobContext,
+    MetricsCollectedEvent,
+    WorkerOptions,
+    cli,
+    metrics,
+)
 from livekit.plugins import openai
 
 from .config import get_settings
 from .logging_setup import logger, setup_logging
 from .prompts import GREETING_INSTRUCTION, SYSTEM_PROMPT
 from .tools import ALL_TOOLS
+
+# Bound tool-call loops so a confused model can't spin forever in one turn.
+_MAX_TOOL_STEPS = 5
 
 
 class PizzaAgent(Agent):
@@ -44,7 +57,26 @@ async def entrypoint(ctx: JobContext) -> None:
             voice=settings.openai_realtime_voice,
             api_key=settings.openai_api_key,
         ),
+        max_tool_steps=_MAX_TOOL_STEPS,
     )
+
+    # --- Observability + session-level error handling ---
+    usage = metrics.UsageCollector()
+
+    @session.on("metrics_collected")
+    def _on_metrics(ev: MetricsCollectedEvent) -> None:
+        metrics.log_metrics(ev.metrics)
+        usage.collect(ev.metrics)
+
+    @session.on("error")
+    def _on_error(ev: ErrorEvent) -> None:
+        # The Realtime/transport layers retry internally; we record the event
+        # so a degrading session is visible rather than silent.
+        logger.error("session error: %s", ev)
+
+    @session.on("close")
+    def _on_close(ev: CloseEvent) -> None:
+        logger.info("session closed; usage: %s", usage.get_summary())
 
     await ctx.connect()
     await session.start(agent=PizzaAgent(), room=ctx.room)
